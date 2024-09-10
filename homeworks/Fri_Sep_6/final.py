@@ -64,3 +64,4 @@ if __name__ == '__main__':
         if ep_robot.vision.unsub_detect_info(name='marker'):
             ep_robot.vision.sub_detect_info(name='line', color='red', callback=on_detect_lines)
             sleep(0.02)
+
