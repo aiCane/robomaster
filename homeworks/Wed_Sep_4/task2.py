@@ -48,13 +48,6 @@ if __name__ == '__main__':
             z_wheels_theta = z_pid_theta.update(feedback=theta, set_point=0)
             z_wheels = z_wheels_y + z_wheels_theta
 
-            print(
-                f" x_wheels_pre: {round(x_wheels_pre, 3)};"
-                f" x_wheels: {round(x_wheels, 3)};"
-                f" y_wheels: {round(y_wheels, 3)};"
-                f" z_wheels_y: {round(z_wheels_y, 3)};"
-                f" z_wheels_theta: {round(z_wheels_theta, 3)};"
-            )
             ep_robot.chassis.drive_wheels(
                 w1=(x_wheels - y_wheels - z_wheels),
                 w2=(x_wheels + y_wheels + z_wheels),
