@@ -23,14 +23,14 @@ if __name__ == '__main__':
     ep_robot.gimbal.moveto(pitch=-25, yaw=0).wait_for_completed()
     ep_robot.vision.sub_detect_info(name='line', color='red', callback=on_detect_lines)
 
-    x_pid_pre = PID(kp=1, ki=0, kd=0)
-    x_pid = PID(kp=1.75, ki=0, kd=0.5)
+    x_pid_pre = PID(kp=1.25, ki=1.25e-4, kd=1.25e-2)
+    x_pid = PID(kp=2, ki=2e-4, kd=2e-2)
     y_pid = PID(kp=100, ki=0, kd=10)
-    z_pid_y = PID(kp=175, ki=5, kd=25)
-    z_pid_theta = PID(kp=1.25, ki=0, kd=0)
+    z_pid_y = PID(kp=125, ki=1, kd=5)
+    z_pid_theta = PID(kp=1, ki=0, kd=0)
 
     precision = 3
-    base_speed = 275
+    base_speed = 300
 
     while True:
         this_time = time()
@@ -48,13 +48,13 @@ if __name__ == '__main__':
             z_wheels_theta = z_pid_theta.update(feedback=theta, set_point=0)
             z_wheels = z_wheels_y + z_wheels_theta
 
-            print(
-                f" x_wheels_pre: {round(x_wheels_pre, 3)};"
-                f" x_wheels: {round(x_wheels, 3)};"
-                f" y_wheels: {round(y_wheels, 3)};"
-                f" z_wheels_y: {round(z_wheels_y, 3)};"
-                f" z_wheels_theta: {round(z_wheels_theta, 3)};"
-            )
+            # print(
+            #     f" x_wheels_pre: {round(x_wheels_pre, 3)};"
+            #     f" x_wheels: {round(x_wheels, 3)};"
+            #     f" y_wheels: {round(y_wheels, 3)};"
+            #     f" z_wheels_y: {round(z_wheels_y, 3)};"
+            #     f" z_wheels_theta: {round(z_wheels_theta, 3)};"
+            # )
             ep_robot.chassis.drive_wheels(
                 w1=(x_wheels - y_wheels - z_wheels),
                 w2=(x_wheels + y_wheels + z_wheels),
