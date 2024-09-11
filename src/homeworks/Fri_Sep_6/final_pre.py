@@ -40,6 +40,10 @@ def on_detect_lines(line_info: List) -> None:
     global lines
     lines = line_info
 
+def on_detect_marker(marker_info: List):
+    global markers
+    markers = marker_info
+
 def get_image():
     global image
     image = ep_robot.camera.read_cv2_image(strategy="newest") # 100%能读取到
@@ -49,7 +53,7 @@ def go(precision):
     if status == 0:
         # simply go
         y = 0.0
-        if not lines[0]: # lines = [1, [], [], ...]; not lines = [0]
+        if lines[0]: # lines = [1, [], [], ...]; not lines = [0]
             for line in lines[1:precision + 1]:
                 y += line[0] / precision
             ep_robot.chassis.drive_speed(x=0.2, z=chassis_speed_z_pid.update(y, 0.5))
@@ -77,18 +81,20 @@ def is_red_light() -> bool:
     return detect_traffic_light()
 
 def is_aim_marker() -> bool:
+    print(markers)
     for marker in markers:
         return marker[4] == '1' or marker[4] == '2' or marker[4] == '3' or marker[4] == '4' or marker[4] == '5'
 
 def deal_line():
     global status, ep_robot, lines
     while True:
-        ep_robot.gimbal.moveto(pitch=-15, yaw=-30, pitch_speed=90, yaw_speed=90).wait_for_completed()
-        if not lines[0]:
+        ep_robot.gimbal.moveto(pitch=-15, yaw=-30, pitch_speed=90, yaw_speed=60).wait_for_completed()
+        if lines[0]:
             break
-        ep_robot.gimbal.moveto(pitch=-15, yaw=30, pitch_speed=90, yaw_speed=90).wait_for_completed()
-        if not lines[0]:
+        ep_robot.gimbal.moveto(pitch=-15, yaw=30, pitch_speed=90, yaw_speed=60).wait_for_completed()
+        if lines[0]:
             break
+        ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
         ep_robot.chassis.move(x=0.1).wait_for_completed()
     status = 0 # when found line
 
@@ -167,6 +173,8 @@ def init_robot():
     ep_robot.set_robot_mode(mode='chassis_lead')
     ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=90).wait_for_completed()
     ep_robot.vision.sub_detect_info(name='line', color='red', callback=on_detect_lines)
+    ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
+    ep_robot.camera.start_video_stream(display=False)
 
 init_robot()
 while True:
