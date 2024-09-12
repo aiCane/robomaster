@@ -53,10 +53,12 @@ def go(precision):
     if status == 0:
         # simply go
         y = 0.0
-        if lines[0]: # lines = [1, [], [], ...]; not lines = [0]
+        # print(f"lines: {lines}")
+        if lines: # lines = [1, [], [], ...]; not lines = [0]
             for line in lines[1:precision + 1]:
                 y += line[0] / precision
             ep_robot.chassis.drive_speed(x=0.2, z=chassis_speed_z_pid.update(y, 0.5))
+            print("going")
         else: # no lines at all
             status = 1
             deal_line()
@@ -81,18 +83,19 @@ def is_red_light() -> bool:
     return detect_traffic_light()
 
 def is_aim_marker() -> bool:
-    print(markers)
+    # print(markers)
     for marker in markers:
-        return marker[4] == '1' or marker[4] == '2' or marker[4] == '3' or marker[4] == '4' or marker[4] == '5'
+        return marker[4] in ['1', '2', '3', '4', '5']
 
 def deal_line():
     global status, ep_robot, lines
     while True:
+        print(f"lines: {lines}")
         ep_robot.gimbal.moveto(pitch=-15, yaw=-30, pitch_speed=90, yaw_speed=60).wait_for_completed()
-        if lines[0]:
+        if lines:
             break
         ep_robot.gimbal.moveto(pitch=-15, yaw=30, pitch_speed=90, yaw_speed=60).wait_for_completed()
-        if lines[0]:
+        if lines:
             break
         ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
         ep_robot.chassis.move(x=0.1).wait_for_completed()
@@ -127,9 +130,8 @@ def deal_marker():
 
 # traffic_light_function
 def detect_traffic_light() -> bool:
-    # 读取图片
-    # image = cv.imread(image_path)
     global image
+    # 读取图片
     if image is None:
         print("Error: Unable to load image.")
         return False
@@ -162,19 +164,15 @@ def detect_traffic_light() -> bool:
         cv.imwrite(f'detected_{color}_light.jpg', image)
         return True
     else:
-        color = 'unknown'
-        print("Unknown light color.")
-        # 保存图片
-        cv.imwrite(f'detected_{color}_light.jpg', image)
         return False
 
 def init_robot():
     ep_robot.initialize(conn_type='ap')
     ep_robot.set_robot_mode(mode='chassis_lead')
     ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=90).wait_for_completed()
-    ep_robot.vision.sub_detect_info(name='line', color='red', callback=on_detect_lines)
-    ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
     ep_robot.camera.start_video_stream(display=False)
+    ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
+    ep_robot.vision.sub_detect_info(name='line', color='red', callback=on_detect_lines)
 
 init_robot()
 while True:

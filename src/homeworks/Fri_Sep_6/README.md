@@ -8,5 +8,6 @@ PS：性能严重不足
     思路：一直开着摄像，5帧，然后每一帧都进行判断。
 
 # To do:
-    1. sub_detect_info只能存在一个
-    2. 使用队友的find_line
+    1. 使用队友的find_line()
+    2. 连续好多次not_find才进入deal_line()
+    3. 
