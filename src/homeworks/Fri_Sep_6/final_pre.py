@@ -1,5 +1,6 @@
 from typing import List
 from time import sleep, time
+
 from robomaster.robot import Robot
 from pid_control import PID
 
@@ -100,18 +101,34 @@ def deal_marker():
     global status, aim_markers
     ep_robot.chassis.drive_speed()
     ep_robot.set_robot_mode(mode='free')
+    print("moving...")
     while True:
         if markers:
             marker_x = markers[0][0]  # 标签中心点x的比例
             marker_y = markers[0][1]  # 标签中心点y的比例
-            print(f"markers: {markers}")
+            # print(f"markers: {markers}")
             if 0.499 < marker_x < 0.501 and 0.545 < marker_y < 0.555:
                 print("got you!")
-                image = crop_center( ep_robot.camera.read_cv2_image(strategy="newest") )
+
+                image = ep_robot.camera.read_cv2_image(strategy="newest")
+                cut_image = crop_center(image)
+                texted_image = draw_text_at_center(
+                    image=cut_image,
+                    text=f"Team 04 detected a marker with ID of {markers[0][4]}"
+                )
+                squared_image = draw_square(
+                    image=texted_image,
+                    x=marker_x,
+                    y=marker_y,
+                    w=markers[0][2],
+                    h=markers[0][3],
+                    thickness=100
+                )
                 sleep(0.5)
+
                 cv.imwrite(
                         filename=f"../../../build/markers/marker_{markers[0][4]}.jpg",
-                        img=image
+                        img=squared_image
                 )
                 aim_markers.remove(markers[0][4])
                 break
@@ -125,6 +142,60 @@ def deal_marker():
     ep_robot.set_robot_mode(mode='chassis_lead')
     sleep(0.1)
     status = 0 # when detected and took a photo
+
+def draw_square(image, x, y, w, h, color=(0, 255, 255), thickness=5):
+    """
+    在图像上绘制正方形。
+
+    参数:
+    - image: 要绘制的图像。
+    - center: 正方形的中心点坐标 (x, y)。
+    - side_length: 正方形的边长。
+    - color: 正方形的颜色，默认为绿色 (0, 255, 0)。
+    - thickness: 线条的厚度，默认为2。
+    """
+    # 计算正方形的左上角和右下角坐标
+    top_left     = ( int(x - w / 2), int(y - h / 2) )
+    bottom_right = ( int(x + w / 2), int(y + h / 2) )
+
+    # 绘制正方形
+    cv.rectangle(image, top_left, bottom_right, color, thickness)
+
+    return image
+
+def draw_text_at_center(
+        image,
+        text,
+        font=cv.FONT_HERSHEY_SIMPLEX,
+        font_scale=1,
+        color=(255, 255, 255),
+        thickness=2
+):
+    """
+    在图像中心绘制文本。
+
+    参数:
+    - image: 要绘制的图像。
+    - text: 要绘制的文本。
+    - font: 字体类型。
+    - font_scale: 字体缩放比例。
+    - color: 文本的颜色，默认为白色 (255, 255, 255)。
+    - thickness: 文本的厚度。
+    """
+    # 获取图像的尺寸
+    height, width = image.shape[:2]
+
+    # 计算文本的宽度和高度
+    text_size = cv.getTextSize(text, font, font_scale, thickness)[0]
+
+    # 计算文本在图像中的位置（中心）
+    text_x = (width - text_size[0]) // 2
+    text_y = (height + text_size[1]) // 2
+
+    # 在图像上绘制文本
+    cv.putText(image, text, (text_x, text_y), font, font_scale, color, thickness, lineType=cv.LINE_AA)
+
+    return image
 
 # traffic_light_function <- provided by
 def detect_traffic_light() -> bool:
