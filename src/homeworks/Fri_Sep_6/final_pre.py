@@ -26,19 +26,14 @@ import numpy as np
 
 # global vals
 status:     int = 0
-lines:     List = []
+count_line: int = 0
 markers:   List = []
 ep_robot: Robot = Robot()
 image:  MatLike = MatLike
 
-chassis_speed_z_pid    = PID()
+chassis_speed_z_pid    = PID(kp=150, ki=0, kd=0)
 marker_yaw_speed_pid   = PID()
 marker_pitch_speed_pid = PID()
-
-# 回调函数
-def on_detect_lines(line_info: List) -> None:
-    global lines
-    lines = line_info
 
 def on_detect_marker(marker_info: List):
     global markers
@@ -48,20 +43,72 @@ def get_image():
     global image
     image = ep_robot.camera.read_cv2_image(strategy="newest") # 100%能读取到
 
-def go(precision):
-    global status, lines, ep_robot
+def go(max_count=10):
+    global status, count_line, ep_robot, image
+
     if status == 0:
-        # simply go
-        y = 0.0
-        # print(f"lines: {lines}")
-        if lines: # lines = [1, [], [], ...]; not lines = [0]
-            for line in lines[1:precision + 1]:
-                y += line[0] / precision
-            ep_robot.chassis.drive_speed(x=0.2, z=chassis_speed_z_pid.update(y, 0.5))
-            print("going")
-        else: # no lines at all
-            status = 1
-            deal_line()
+
+        # 将图像转换为灰度图
+        gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+
+        # 只使用图像的下半部分
+        height, width = gray.shape[:2]
+        lower_half = gray[int(height / 2):height, 0:width]
+
+        # 应用高斯模糊，减少图像噪声
+        blur = cv.GaussianBlur(lower_half, (5, 5), 0)
+
+        # 边缘检测
+        edges = cv.Canny(blur, 50, 150)
+
+        # 寻找边缘的轮廓
+        lines = cv.HoughLinesP(edges, 1, np.pi / 180, 100, minLineLength=100, maxLineGap=10)
+
+        # 初始化最长线的长度和端点
+        max_length = 0
+        max_line = None
+
+        # 根据检测到的线来控制机器人
+        if lines is not None:
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+                if length > max_length:
+                    max_length = length
+                    max_line = line[0]
+
+            # 如果找到了最长的线，使用它来控制机器人
+            if max_line is not None:
+                x1, y1, x2, y2 = max_line
+                slope = (y2 - y1) / (x2 - x1) if x2 != x1 else float('inf')
+
+                print("lines!")
+                ep_robot.chassis.drive_speed(x=0.2, z=chassis_speed_z_pid.update(slope, 0))
+                count_line = 0
+            else:  # no lines at all
+                count_line += 1
+
+            if count_line >= max_count:
+                status = 1
+                deal_line(lines)
+                count_line = 0
+
+    # if status == 0:
+    #     # simply go
+    #     y = 0.0
+    #     # print(f"lines: {lines}")
+    #     if lines: # lines = [1, [], [], ...]; not lines = [0]
+    #         for line in lines[1:precision + 1]:
+    #             y += line[0] / precision
+    #         ep_robot.chassis.drive_speed(x=0.2, z=chassis_speed_z_pid.update(y, 0.5))
+    #         count_line = 0
+    #     else: # no lines at all
+    #         count_line += 1
+    #     if count_line >= max_line:
+    #         status = 1
+    #         deal_line()
+    #         count_line = 0
+
 
 def find_light():
     global status
@@ -76,6 +123,7 @@ def find_marker():
     if status == 0:
         # finding marker
         if is_aim_marker():
+            print("marker!")
             status = 3
             deal_marker()
 
@@ -87,15 +135,16 @@ def is_aim_marker() -> bool:
     for marker in markers:
         return marker[4] in ['1', '2', '3', '4', '5']
 
-def deal_line():
-    global status, ep_robot, lines
+def deal_line(lines):
+    global status, ep_robot
     while True:
-        print(f"lines: {lines}")
-        ep_robot.gimbal.moveto(pitch=-15, yaw=-30, pitch_speed=90, yaw_speed=60).wait_for_completed()
-        if lines:
+        ep_robot.gimbal.moveto(pitch=-15, yaw=-45).wait_for_completed()
+        if lines is not None:
+            ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
             break
-        ep_robot.gimbal.moveto(pitch=-15, yaw=30, pitch_speed=90, yaw_speed=60).wait_for_completed()
-        if lines:
+        ep_robot.gimbal.moveto(pitch=-15, yaw=45).wait_for_completed()
+        if lines is not None:
+            ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
             break
         ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
         ep_robot.chassis.move(x=0.1).wait_for_completed()
@@ -172,11 +221,10 @@ def init_robot():
     ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=90).wait_for_completed()
     ep_robot.camera.start_video_stream(display=False)
     ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
-    ep_robot.vision.sub_detect_info(name='line', color='red', callback=on_detect_lines)
 
 init_robot()
 while True:
     get_image()
-    go(3)
+    go()
     find_light()
     find_marker()
