@@ -16,8 +16,8 @@ markers:   List = []
 ep_robot: Robot = Robot()
 
 chassis_speed_z_pid    = PID(kp=150, ki=0, kd=0)
-marker_yaw_speed_pid   = PID(kp=10,  ki=0, kd=0)
-marker_pitch_speed_pid = PID(kp=10,  ki=0, kd=0)
+marker_yaw_speed_pid   = PID(kp=20,  ki=0, kd=0)
+marker_pitch_speed_pid = PID(kp=20,  ki=0, kd=0)
 
 def on_detect_line(line_info: List) -> None:
     global lines
@@ -109,22 +109,22 @@ def deal_marker():
             marker_x = markers[0][0]  # 标签中心点x的比例
             marker_y = markers[0][1]  # 标签中心点y的比例
             # print(markers, marker_x, marker_y)
-            ep_robot.gimbal.drive_speed(
-                pitch_speed=-marker_pitch_speed_pid.update(marker_y, 0.5),
-                yaw_speed=marker_yaw_speed_pid.update(marker_x, 0.5)
-            )
-            sleep(0.1)
-            if 0.45 < marker_x < 0.55 and 0.45 < marker_y < 0.55:
-                # print(markers)
-                print(markers[0])
-                # print(markers[0][4])
+            if 0.49 < marker_x < 0.51 and 0.49 < marker_y < 0.51:
+                print(f"markers[0]: {markers[0]}")
                 print("got it!")
                 if cv.imwrite(
                         filename=join("build/markers/" , f'{markers[0][4]}.jpg'),
                         img=ep_robot.camera.read_cv2_image(strategy="newest")
                 ):
                     break
+            else:
+                ep_robot.gimbal.drive_speed(
+                    pitch_speed=-marker_pitch_speed_pid.update(marker_y, 0.5),
+                    yaw_speed=marker_yaw_speed_pid.update(marker_x, 0.5)
+                )
+                sleep(0.1)
     ep_robot.set_robot_mode(mode='chassis_lead')
+    ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=90).wait_for_completed()
     status = 0 # when detected and took a photo
 
 # traffic_light_function

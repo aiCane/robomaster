@@ -26,7 +26,7 @@
 ## Issues:
     1. 识别marker函数时出现了 list index out of range
     2. PID参数调节
-    3. 
+    3. 拍照拍照不上
 
 ## Fixed:
     1. 连续好多次not_find才进入deal_line()
