@@ -7,15 +7,16 @@ import cv2 as cv
 import numpy as np
 
 # global vals
-status:     int = 0
-count_line: int = 0
-lines:     List = []
-markers:   List = []
-ep_robot: Robot = Robot()
+status:       int = 0
+count_line:   int = 0
+lines:       List = []
+markers:     List = []
+aim_markers: List = ['1', '2', '3', '4', '5']
+ep_robot:   Robot = Robot()
 
-chassis_speed_z_pid    = PID(kp=150, ki=0, kd=0)
-marker_yaw_speed_pid   = PID(kp=20,  ki=0, kd=0)
-marker_pitch_speed_pid = PID(kp=20,  ki=0, kd=0)
+chassis_speed_z_pid    = PID(kp=150, ki=0,    kd=0)
+marker_yaw_speed_pid   = PID(kp=50,  ki=1e-3, kd=0)
+marker_pitch_speed_pid = PID(kp=25,  ki=1e-3, kd=0)
 
 def on_detect_line(line_info: List) -> None:
     global lines
@@ -28,7 +29,6 @@ def on_detect_marker(marker_info: List) -> None:
 def go(precision=3,max_count=10):
     global status, count_line, ep_robot
     if status == 0:
-        # print(f"lines: {lines}")
         # simply go
         ep_robot.vision.sub_detect_info(name='line', color='blue', callback=on_detect_line)
         y = 0.0
@@ -61,7 +61,6 @@ def find_marker():
         sleep(0.07)
         if is_aim_marker():
             print("marker!")
-            print(f"markers: {markers}")
             status = 3
             deal_marker()
         ep_robot.vision.unsub_detect_info(name='marker')
@@ -70,9 +69,8 @@ def is_red_light() -> bool:
     return detect_traffic_light()
 
 def is_aim_marker() -> bool:
-    print(markers)
     for marker in markers:
-        return marker[4] in ['1', '2', '3', '4', '5']
+        return marker[4] in aim_markers and ( 0.2 < marker[2] or 0.2 < marker[3] )
 
 def deal_line():
     global status, lines, ep_robot
@@ -93,40 +91,42 @@ def deal_line():
 def deal_light():
     global status
     ep_robot.chassis.drive_speed()
-    # ep_robot.gimbal.stop()
     while True:
         if not detect_traffic_light():
             break
     status = 0 # when red light disappear
 
 def deal_marker():
-    global status
+    global status, aim_markers
     ep_robot.chassis.drive_speed()
     ep_robot.set_robot_mode(mode='free')
     while True:
         if markers:
             marker_x = markers[0][0]  # 标签中心点x的比例
             marker_y = markers[0][1]  # 标签中心点y的比例
-            # print(markers, marker_x, marker_y)
-            if 0.495 < marker_x < 0.505 and 0.495 < marker_y < 0.505:
-                print(f"markers[0]: {markers[0]}")
-                print("got it!")
+            print(f"markers: {markers}")
+            if 0.499 < marker_x < 0.501 and 0.545 < marker_y < 0.555:
+                print("got you!")
+                image = crop_center( ep_robot.camera.read_cv2_image(strategy="newest") )
+                sleep(0.5)
                 cv.imwrite(
                         filename=f"../../../build/markers/marker_{markers[0][4]}.jpg",
-                        img=crop_center( ep_robot.camera.read_cv2_image(strategy="newest") )
+                        img=image
                 )
+                aim_markers.remove(markers[0][4])
                 break
             else:
                 ep_robot.gimbal.drive_speed(
-                    pitch_speed=-marker_pitch_speed_pid.update(marker_y, 0.5),
+                    pitch_speed=-marker_pitch_speed_pid.update(marker_y, 0.55),
                     yaw_speed=marker_yaw_speed_pid.update(marker_x, 0.5)
                 )
                 sleep(0.1)
+    ep_robot.gimbal.moveto(pitch=-15, yaw=0).wait_for_completed()
     ep_robot.set_robot_mode(mode='chassis_lead')
-    ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=90).wait_for_completed()
+    sleep(0.1)
     status = 0 # when detected and took a photo
 
-# traffic_light_function
+# traffic_light_function <- provided by
 def detect_traffic_light() -> bool:
     # 读取图片
     image = ep_robot.camera.read_cv2_image(strategy="newest")
@@ -177,7 +177,7 @@ def detect_traffic_light() -> bool:
         return False
     return False
 
-def crop_center(image, fraction_width=0.2, fraction_height=0.25):
+def crop_center(image, fraction_width=0.75, fraction_height=0.8):
     # 获取图像的尺寸
     height, width = image.shape[:2]
 
@@ -200,8 +200,12 @@ def init_robot():
     ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=90).wait_for_completed()
     ep_robot.camera.start_video_stream(display=False)
 
-init_robot()
-while True:
-    go()
-    find_light()
-    find_marker()
+def main():
+    while True:
+        go()
+        find_light()
+        find_marker()
+
+if __name__ == "__main__":
+    init_robot()
+    main()

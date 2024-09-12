@@ -25,14 +25,17 @@
 
 ## Issues:
     1. 识别marker函数时出现了 list index out of range
-    2. PID参数调节
-    3. 拍照不在正中心、重复拍照
-    4. 近距离才拍照，远距离不拍，改用另一个sub函数
+    2. 清空文件夹
+    3. 
+
 
 ## Fixed:
     1. 连续好多次not_find才进入deal_line()
     2. 使用time.sleep()减轻了marker和line回调问题
     3. 不用队友的find_line()了，不好用
     4. 拍照成功
+    5. 拍照不在正中心、重复拍照
+    6. PID参数调节
+    7. 近距离才拍照，远距离不拍，改用另一个sub函数
 
 PS：性能严重不足
