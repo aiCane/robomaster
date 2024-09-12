@@ -24,12 +24,14 @@
     """
 
 ## Issues:
-    1. 使用队友的find_line()
+    1. 识别marker函数时出现了 list index out of range
     2. PID参数调节
-    3. 识别marker函数
+    3. 
 
 ## Fixed:
     1. 连续好多次not_find才进入deal_line()
     2. 使用time.sleep()减轻了marker和line回调问题
+    3. 不用队友的find_line()了，不好用
+    4. 
 
 PS：性能严重不足

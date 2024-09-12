@@ -1,5 +1,6 @@
 from typing import List
-from cv2.typing import MatLike
+# from cv2.typing import MatLike
+from os.path import join
 from time import sleep
 from robomaster.robot import Robot
 from pid_control import PID
@@ -13,11 +14,10 @@ count_line: int = 0
 lines:     List = []
 markers:   List = []
 ep_robot: Robot = Robot()
-image:  MatLike = MatLike
 
 chassis_speed_z_pid    = PID(kp=150, ki=0, kd=0)
-marker_yaw_speed_pid   = PID(kp=1,   ki=0, kd=0)
-marker_pitch_speed_pid = PID(kp=1,   ki=0, kd=0)
+marker_yaw_speed_pid   = PID(kp=10,  ki=0, kd=0)
+marker_pitch_speed_pid = PID(kp=10,  ki=0, kd=0)
 
 def on_detect_line(line_info: List) -> None:
     global lines
@@ -27,12 +27,8 @@ def on_detect_marker(marker_info: List) -> None:
     global markers
     markers = [] if marker_info == [0] else marker_info
 
-def get_image():
-    global image
-    image = ep_robot.camera.read_cv2_image(strategy="newest") # 100%能读取到
-
 def go(precision=3,max_count=10):
-    global status, count_line, ep_robot, image
+    global status, count_line, ep_robot
     if status == 0:
         # print(f"lines: {lines}")
         # simply go
@@ -64,9 +60,10 @@ def find_marker():
     if status == 0:
         # finding marker
         ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
-        sleep(0.06)
+        sleep(0.07)
         if is_aim_marker():
             print("marker!")
+            print(f"markers: {markers}")
             status = 3
             deal_marker()
         ep_robot.vision.unsub_detect_info(name='marker')
@@ -75,12 +72,12 @@ def is_red_light() -> bool:
     return detect_traffic_light()
 
 def is_aim_marker() -> bool:
-    # print(f"markers: {markers}")
     for marker in markers:
         return marker[4] in ['1', '2', '3', '4', '5']
 
 def deal_line():
     global status, lines, ep_robot
+    ep_robot.chassis.drive_speed() # stop 先
     while True:
         ep_robot.gimbal.moveto(pitch=-15, yaw=-45).wait_for_completed()
         if lines:
@@ -106,26 +103,35 @@ def deal_light():
 def deal_marker():
     global status
     ep_robot.chassis.drive_speed()
-    for marker in markers:
-        marker_x = marker[0]  # 标签中心点x的比例
-        marker_y = marker[1]  # 标签中心点y的比例
-        while True:
+    ep_robot.set_robot_mode(mode='free')
+    while True:
+        if markers:
+            marker_x = markers[0][0]  # 标签中心点x的比例
+            marker_y = markers[0][1]  # 标签中心点y的比例
+            # print(markers, marker_x, marker_y)
             ep_robot.gimbal.drive_speed(
-                pitch_speed=marker_pitch_speed_pid.update(marker_y, 0.5),
+                pitch_speed=-marker_pitch_speed_pid.update(marker_y, 0.5),
                 yaw_speed=marker_yaw_speed_pid.update(marker_x, 0.5)
             )
+            sleep(0.1)
             if 0.45 < marker_x < 0.55 and 0.45 < marker_y < 0.55:
-                cv.imwrite(
-                    filename=f"build/markers/marker{marker[4]}",
-                    img=image
-                )
-                break
+                # print(markers)
+                print(markers[0])
+                # print(markers[0][4])
+                print("got it!")
+                if cv.imwrite(
+                        filename=join("build/markers/" , f'{markers[0][4]}.jpg'),
+                        img=ep_robot.camera.read_cv2_image(strategy="newest")
+                ):
+                    break
+    ep_robot.set_robot_mode(mode='chassis_lead')
     status = 0 # when detected and took a photo
 
 # traffic_light_function
 def detect_traffic_light() -> bool:
-    global image
     # 读取图片
+    image = ep_robot.camera.read_cv2_image(strategy="newest")
+
     if image is None:
         print("Error: Unable to load image.")
         return False
@@ -168,7 +174,6 @@ def init_robot():
 
 init_robot()
 while True:
-    get_image()
     go()
     find_light()
     find_marker()
