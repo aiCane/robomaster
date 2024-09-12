@@ -1,7 +1,5 @@
 from typing import List
-# from cv2.typing import MatLike
-from os.path import join
-from time import sleep
+from time import sleep, time
 from robomaster.robot import Robot
 from pid_control import PID
 
@@ -51,7 +49,7 @@ def find_light():
     global status
     if status == 0:
         # finding red light
-        if is_red_light():
+        if detect_traffic_light():
             status = 2
             deal_light()
 
@@ -72,6 +70,7 @@ def is_red_light() -> bool:
     return detect_traffic_light()
 
 def is_aim_marker() -> bool:
+    print(markers)
     for marker in markers:
         return marker[4] in ['1', '2', '3', '4', '5']
 
@@ -79,11 +78,11 @@ def deal_line():
     global status, lines, ep_robot
     ep_robot.chassis.drive_speed() # stop 先
     while True:
-        ep_robot.gimbal.moveto(pitch=-15, yaw=-45).wait_for_completed()
+        ep_robot.gimbal.moveto(pitch=-15, yaw=-60).wait_for_completed()
         if lines:
             ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
             break
-        ep_robot.gimbal.moveto(pitch=-15, yaw=45).wait_for_completed()
+        ep_robot.gimbal.moveto(pitch=-15, yaw=60).wait_for_completed()
         if lines:
             ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
             break
@@ -94,9 +93,9 @@ def deal_line():
 def deal_light():
     global status
     ep_robot.chassis.drive_speed()
-    ep_robot.gimbal.stop()
+    # ep_robot.gimbal.stop()
     while True:
-        if not is_red_light():
+        if not detect_traffic_light():
             break
     status = 0 # when red light disappear
 
@@ -109,14 +108,14 @@ def deal_marker():
             marker_x = markers[0][0]  # 标签中心点x的比例
             marker_y = markers[0][1]  # 标签中心点y的比例
             # print(markers, marker_x, marker_y)
-            if 0.49 < marker_x < 0.51 and 0.49 < marker_y < 0.51:
+            if 0.495 < marker_x < 0.505 and 0.495 < marker_y < 0.505:
                 print(f"markers[0]: {markers[0]}")
                 print("got it!")
-                if cv.imwrite(
-                        filename=join("build/markers/" , f'{markers[0][4]}.jpg'),
-                        img=ep_robot.camera.read_cv2_image(strategy="newest")
-                ):
-                    break
+                cv.imwrite(
+                        filename=f"../../../build/markers/marker_{markers[0][4]}.jpg",
+                        img=crop_center( ep_robot.camera.read_cv2_image(strategy="newest") )
+                )
+                break
             else:
                 ep_robot.gimbal.drive_speed(
                     pitch_speed=-marker_pitch_speed_pid.update(marker_y, 0.5),
@@ -143,28 +142,57 @@ def detect_traffic_light() -> bool:
     # 注意：这些值可能需要根据你的具体图片进行调整
     lower_red = np.array([0, 120, 70])
     upper_red = np.array([10, 255, 255])
-    lower_green = np.array([36, 25, 25])
-    upper_green = np.array([70, 255, 255])
 
     # 红色掩码
     mask_red = cv.inRange(hsv, lower_red, upper_red)
-    # 绿色掩码
-    mask_green = cv.inRange(hsv, lower_green, upper_green)
 
     # 形态学操作，去除噪点
     kernel = np.ones((5, 5), np.uint8)
     mask_red = cv.dilate(mask_red, kernel, iterations=1)
-    mask_green = cv.dilate(mask_green, kernel, iterations=1)
 
-    # 检测红色或绿色区域
-    if cv.countNonZero(mask_red) > cv.countNonZero(mask_green):
-        color = 'red'
-        print("Red light detected, car stops.")
-        # 保存图片
-        cv.imwrite(f'detected_{color}_light.jpg', image)
-        return True
-    else:
+    # 检测红色区域
+    contours, _ = cv.findContours(mask_red, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    for contour in contours:
+        if cv.contourArea(contour) > 5000:  # 假设交通灯区域的最小面积
+
+            # 轮廓近似
+            epsilon = 0.02 * cv.arcLength(contour, True)
+            approx = cv.approxPolyDP(contour, epsilon, True)
+
+            # 检测近似轮廓的顶点数是否为圆形（近似为4个顶点）
+            if len(approx) == 4:
+                # 计算轮廓的周长
+                perimeter = cv.arcLength(contour, True)
+                # 计算轮廓的面积
+                area = cv.contourArea(contour)
+                # 计算形状的圆度
+                circularity = 4 * np.pi * (area / (perimeter * perimeter))
+                # 如果圆度足够高，则认为是圆形
+                if circularity > 0.8:  # 这个阈值可能需要根据实际情况调整
+                    cv.imwrite(
+                        filename=f"../../../build/traffic_lights/detected_red_light_{time()}.jpg",
+                        img=image
+                    )
+                    return True
         return False
+    return False
+
+def crop_center(image, fraction_width=0.2, fraction_height=0.25):
+    # 获取图像的尺寸
+    height, width = image.shape[:2]
+
+    # 计算裁剪区域的宽度和高度
+    crop_width = int(width * fraction_width)
+    crop_height = int(height * fraction_height)
+
+    # 计算裁剪区域的起始点（中心点）
+    start_x = (width - crop_width) // 2
+    start_y = (height - crop_height) // 2
+
+    # 裁剪图像
+    cropped_image = image[start_y:start_y + crop_height, start_x:start_x + crop_width]
+
+    return cropped_image
 
 def init_robot():
     ep_robot.initialize(conn_type='ap')
