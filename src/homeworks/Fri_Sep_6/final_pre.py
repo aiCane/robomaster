@@ -1,23 +1,6 @@
-"""
-status=0: go(), find_light(), find_marker()
-status=1:          go() -> deal_line()
-status=2:  find_light() -> deal_light()
-status=3: find_marker() -> deal_marker()
-
-at any time: get_image()
-
-go():          status: 0 -> 1
-find_light():  status: 0 -> 2
-find_marker(): status: 0 -> 3
-
-deal_line():   status: 1 -> 0
-deal_light():  status: 2 -> 0
-deal_marker(): status: 3 -> 0
-
-status: int
-"""
 from typing import List
 from cv2.typing import MatLike
+from time import sleep
 from robomaster.robot import Robot
 from pid_control import PID
 
@@ -33,8 +16,8 @@ ep_robot: Robot = Robot()
 image:  MatLike = MatLike
 
 chassis_speed_z_pid    = PID(kp=150, ki=0, kd=0)
-marker_yaw_speed_pid   = PID()
-marker_pitch_speed_pid = PID()
+marker_yaw_speed_pid   = PID(kp=1,   ki=0, kd=0)
+marker_pitch_speed_pid = PID(kp=1,   ki=0, kd=0)
 
 def on_detect_line(line_info: List) -> None:
     global lines
@@ -42,7 +25,7 @@ def on_detect_line(line_info: List) -> None:
 
 def on_detect_marker(marker_info: List) -> None:
     global markers
-    markers = marker_info
+    markers = [] if marker_info == [0] else marker_info
 
 def get_image():
     global image
@@ -51,9 +34,9 @@ def get_image():
 def go(precision=3,max_count=10):
     global status, count_line, ep_robot, image
     if status == 0:
-        ep_robot.vision.sub_detect_info(name='line', callback=on_detect_line)
         # print(f"lines: {lines}")
         # simply go
+        ep_robot.vision.sub_detect_info(name='line', color='blue', callback=on_detect_line)
         y = 0.0
         if lines: # lines = [1, [], [], ...]; not lines = [0]
             for line in lines[1:precision + 1]:
@@ -79,8 +62,9 @@ def find_light():
 def find_marker():
     global status
     if status == 0:
-        ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
         # finding marker
+        ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
+        sleep(0.06)
         if is_aim_marker():
             print("marker!")
             status = 3
@@ -91,7 +75,7 @@ def is_red_light() -> bool:
     return detect_traffic_light()
 
 def is_aim_marker() -> bool:
-    print(markers)
+    # print(f"markers: {markers}")
     for marker in markers:
         return marker[4] in ['1', '2', '3', '4', '5']
 
@@ -112,7 +96,7 @@ def deal_line():
 
 def deal_light():
     global status
-    ep_robot.chassis.stop()
+    ep_robot.chassis.drive_speed()
     ep_robot.gimbal.stop()
     while True:
         if not is_red_light():
@@ -121,6 +105,7 @@ def deal_light():
 
 def deal_marker():
     global status
+    ep_robot.chassis.drive_speed()
     for marker in markers:
         marker_x = marker[0]  # 标签中心点x的比例
         marker_y = marker[1]  # 标签中心点y的比例
