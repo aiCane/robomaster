@@ -1,4 +1,3 @@
-from typing import List
 from time import sleep, time
 
 from robomaster.robot import Robot
@@ -13,9 +12,9 @@ count_line: int = 0
 
 # current_marker_info: str = ''
 
-lines:       List = []
-markers:     List = []
-aim_markers: List = ['1', '2', '3', '4', '5']
+lines:       list = []
+markers:     list = []
+aim_markers: list = ['1', '2', '3', '4', '5']
 
 ep_robot: Robot = Robot()
 
@@ -23,16 +22,24 @@ chassis_speed_z_pid    = PID(kp=150, ki=0,    kd=0)
 marker_yaw_speed_pid   = PID(kp=50,  ki=1e-3, kd=0)
 marker_pitch_speed_pid = PID(kp=25,  ki=1e-3, kd=0)
 
-def on_detect_line(line_info: List) -> None:
+def on_detect_line(line_info: list) -> None:
     global lines
-    lines = [] if line_info == [0] else line_info
+    if line_info:
+        if type(line_info[0]) == list or line_info == [0]:
+            lines = []
+        else:
+            lines = line_info
+    # lines = [] if line_info == [0] else line_info
+    if lines:
+        if type(lines[0]) == list or lines == [0]:
+            lines = []
     # print(f"lines: {lines}")
 
-def on_detect_marker(marker_info: List) -> None:
+def on_detect_marker(marker_info: list) -> None:
     global markers # , current_marker_info
     if marker_info:
         # print(f"marker_info: {marker_info}")
-        if marker_info[0] in [0, 1, 2]:
+        if marker_info[0] in [0, 1, 2, 3, 4]:
             markers = []
         else:
             markers = marker_info
@@ -40,28 +47,28 @@ def on_detect_marker(marker_info: List) -> None:
         if markers[0] in [0, 1, 2, 3, 4]:
             markers = []
 
-    # if markers:
-    #     print(f"markers[0]: {markers[0]}")
-    #     current_marker_info = markers[0][4]
-    #
-    #     for marker in markers:
-    #         if marker[4] != current_marker_info:
-    #             markers.remove(marker)
-    #             # print(marker)
-
-def go(precision=3, max_count=10):
+def go(precision=3, max_count=3):
     global status, count_line, ep_robot
     if status == 0:
         # simply go
         ep_robot.vision.sub_detect_info(name='line', color='green', callback=on_detect_line)
         y = 0.0
-        if lines and lines != [0]: # lines = [1, [], [], ...]; not lines = [0]
-            number = lines[0] - 1
-            for line in lines[ 1+10*number : 10*number+precision+1 ]:
-                y += line[0] / precision
-            ep_robot.chassis.drive_speed(x=0.25, z=chassis_speed_z_pid.update(y, 0.5))
-            count_line = 0
-        else: # no lines at all
+        print(f"lines: {lines}")
+        if lines: # and type(lines[0]) != list: # lines = [1, [], [], ...]; not lines = [0]
+            if lines[0] == 1:
+                # number = lines[0] - 1 # don't know how to fix
+                # for line in lines[ 1+10*number : 10*number+precision+1 ]:
+                #     y += line[0] / precision
+                for line in lines[1:precision+1]:
+                    y += line[0] / precision
+                # print(y)
+                ep_robot.chassis.drive_speed(x=0.2, z=chassis_speed_z_pid.update(y, 0.5))
+                count_line = 0
+            elif lines[0] not in [0, 1]:
+                pass
+                # if lines[0] not in [0, 1] and type(lines[0]) != list: # no lines at all
+                #     pass
+        else:
             count_line += 1
         if count_line >= max_count:
             status = 1
@@ -84,6 +91,7 @@ def find_marker():
         # finding marker
         ep_robot.vision.sub_detect_info(name='marker', callback=on_detect_marker)
         sleep(0.05) # change if (TypeError: 'int' object is not subscriptable) or (Index out of range)
+        # print(f"markers: {markers}")
         if is_aim_marker():
             print("marker!")
             status = 3
@@ -93,11 +101,12 @@ def find_marker():
 def is_aim_marker() -> bool:
     # global current_marker_info
     for marker in markers:
-        return marker[4] in aim_markers and ( 0.1 < marker[2] or 0.2 < marker[3] )
+        return marker[4] in aim_markers and ( 0.8 < marker[2] or 0.16 < marker[3] )
 
 def deal_line():
     global status, lines, ep_robot
     ep_robot.chassis.drive_speed() # stop 先
+    # ep_robot.chassis.move(x=-0.1).wait_for_completed()
     print("finding line...")
     while True:
         ep_robot.gimbal.moveto(pitch=-10, yaw=90).wait_for_completed()
@@ -113,7 +122,12 @@ def deal_line():
             ep_robot.chassis.move(z=60).wait_for_completed()
             break
         ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
-        ep_robot.chassis.move(x=-0.1).wait_for_completed()
+        if lines:
+            ep_robot.gimbal.move(pitch=10).wait_for_completed()
+            ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
+            ep_robot.chassis.move(z=60).wait_for_completed()
+            break
+        ep_robot.chassis.move(x=0.1).wait_for_completed()
         print("...")
     ep_robot.gimbal.moveto(pitch=-15, yaw=0, pitch_speed=90, yaw_speed=60).wait_for_completed()
     print("founded")
@@ -123,17 +137,24 @@ def deal_light():
     global status
     ep_robot.chassis.drive_speed()
     counter = 0
+    photo_counter = 0
+    is_photoed = True
     while True:
-        if counter >= 15:
+        if counter >= 10:
             break
+        if photo_counter >= 3 and is_photoed:
+            cv.imwrite(
+                filename=f"../../../build/traffic_lights/detected_red_light_{time()}.jpg",
+                img=ep_robot.camera.read_cv2_image(strategy="newest")
+            )
+            is_photoed = False
         if detect_traffic_light():
             counter = 0
+            photo_counter += 1
         else:
             counter += 1
-    cv.imwrite(
-        filename=f"../../../build/traffic_lights/detected_red_light_{time()}.jpg",
-        img=ep_robot.camera.read_cv2_image(strategy="newest")
-    )
+            photo_counter = 0
+
     status = 0 # when red light disappear
 
 def deal_marker():
@@ -144,22 +165,43 @@ def deal_marker():
     # marker_x:  float = 0.5
     # marker_y:  float = 0.5
     # marker_info: str = ''
-    count = 0
+    # count = 0
     dealing_markers = []
+    # current_marker = []
     if markers:
-        dealing_markers: List[str] = [marker[4] for marker in markers]
+        dealing_markers: list = [marker[4] for marker in markers]
+    for marker in dealing_markers:
+        if marker not in aim_markers:
+            dealing_markers.remove(marker)
+    for marker in dealing_markers:
+        if marker not in aim_markers:
+            dealing_markers.remove(marker)
+    for marker in dealing_markers:
+        if marker not in aim_markers:
+            dealing_markers.remove(marker)
     while True:
         if markers:
-            if markers[0][4] == dealing_markers[0]:
-            # if markers[0][4] == current_marker_info:
-                current_marker = markers[0]
+            # print(markers)
+            if dealing_markers:
+                # if markers[0][4] not in aim_markers and markers[1][4] not in aim_markers:
+                #     break
+                if markers[0][4] == dealing_markers[0]:
+                # if markers[0][4] == current_marker_info:
+                    current_current_marker = markers[0]
+                elif len(markers) > 1:
+                    print(dealing_markers)
+                    print(markers)
+                    current_current_marker = markers[1]
             else:
-                current_marker = markers[1]
-            marker_x    = current_marker[0]  # 标签中心点x的比例
-            marker_y    = current_marker[1]  # 标签中心点y的比例
-            marker_info = current_marker[4]
-            print( [marker_x, marker_y, marker_info] )
-            if 0.499 < marker_x < 0.501 and 0.535 < marker_y < 0.545:
+                break
+            # print(markers)
+            print(dealing_markers)
+            # print(current_marker)
+            marker_x    = current_current_marker[0]  # 标签中心点x的比例
+            marker_y    = current_current_marker[1]  # 标签中心点y的比例
+            marker_info = current_current_marker[4]
+            # print( [marker_x, marker_y, marker_info] )
+            if 0.495 < marker_x < 0.505 and 0.535 < marker_y < 0.545:
                 print("got you!")
 
                 sleep(0.5)
@@ -176,23 +218,28 @@ def deal_marker():
                 )
 
                 ep_robot.blaster.fire(fire_type='ir')
-                aim_markers.remove(markers[0][4])
-                dealing_markers.remove(marker_info)
+                if marker_info in aim_markers:
+                    aim_markers.remove(marker_info)
+                if marker_info in dealing_markers:
+                    dealing_markers.remove(marker_info)
+
+                break
             else:
                 ep_robot.gimbal.drive_speed(
                     pitch_speed=-marker_pitch_speed_pid.update(marker_y, 0.54),
                     yaw_speed=marker_yaw_speed_pid.update(marker_x, 0.5)
                 )
                 sleep(0.1)
-            if not current_marker:
+            if not dealing_markers:
                 break
-        else:
-            count += 1
-        if count >= 10:
-            break
+        # else:
+        #     count += 1
+        # if count >= 10:
+        #     break
+        # print(count)
     ep_robot.gimbal.moveto(pitch=-15, yaw=0).wait_for_completed()
     ep_robot.set_robot_mode(mode='chassis_lead')
-    sleep(0.1)
+    sleep(0.25)
     status = 0 # when detected and took a photo
 
 def square(image):
@@ -283,7 +330,7 @@ def detect_traffic_light() -> bool:
     # 检测红色区域
     contours, _ = cv.findContours(mask_red, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     for contour in contours:
-        if cv.contourArea(contour) > 2500:  # 假设交通灯区域的最小面积
+        if cv.contourArea(contour) > 5000:  # 假设交通灯区域的最小面积
 
             # 轮廓近似
             epsilon = 0.02 * cv.arcLength(contour, True)
@@ -291,7 +338,7 @@ def detect_traffic_light() -> bool:
 
             # 检测近似轮廓的顶点数是否为圆形（近似为大于4个顶点）
             if 6 <= len(approx) <= 8:
-                # print(f"{len(approx)}, almost there")
+                print(f"{len(approx)}, almost there")
                 # 计算轮廓的周长
                 perimeter = cv.arcLength(contour, True)
                 # 计算轮廓的面积
@@ -300,11 +347,11 @@ def detect_traffic_light() -> bool:
                 circularity = 4 * np.pi * (area / (perimeter * perimeter))
 
                 # 如果圆度足够高，则认为是圆形
-                if circularity > 0.8:  # 这个阈值可能需要根据实际情况调整
+                if circularity > 0.775:  # 这个阈值可能需要根据实际情况调整
                     return True
     return False
 
-def crop_center(image, fraction_width=0.8, fraction_height=0.3):
+def crop_center(image, fraction_width=0.8, fraction_height=0.4):
     # 获取图像的尺寸
     height, width = image.shape[:2]
 
@@ -329,9 +376,9 @@ def init_robot():
 
 def main():
     while True:
+        find_marker()
         go()
         find_light()
-        find_marker()
 
 if __name__ == "__main__":
     init_robot()
