@@ -100,8 +100,9 @@ def find_marker():
 
 def is_aim_marker() -> bool:
     # global current_marker_info
+
     for marker in markers:
-        return marker[4] in aim_markers and ( 0.8 < marker[2] or 0.16 < marker[3] )
+        return marker[4] in aim_markers and ( 0.7 < marker[2] or 0.14 < marker[3] )
 
 def deal_line():
     global status, lines, ep_robot
